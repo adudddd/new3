@@ -5,47 +5,68 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Enhanced Arcade Shooter</title>
   <style>
-    /* General Styles */
+    /* Global Styles */
     body {
       margin: 0;
-      background-color: #000;
+      background: linear-gradient(135deg, #000 0%, #111 100%);
       color: #fff;
-      font-family: Arial, sans-serif;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
       overflow: hidden;
     }
     .game-container {
       position: relative;
       width: 100%;
       max-width: 800px;
-      margin: 0 auto;
-      background: #111;
-      border: 3px solid #444;
-      border-radius: 8px;
+      margin: 20px auto;
+      background: #222;
+      border: 3px solid #555;
+      border-radius: 10px;
       overflow: hidden;
+      box-shadow: 0 0 20px rgba(0,0,0,0.8);
     }
     .game-area {
       position: relative;
       width: 100%;
       height: 500px;
-      background: url('stars.jpg') repeat; /* Optional background */
+      background: url('stars.jpg') repeat; /* optional stars background */
     }
     /* UI Elements */
-    #score-display,
-    #combo-display,
-    #health-bar,
-    #mini-map {
+    #score-display, #combo-display, #health-bar, #mini-map {
       position: absolute;
       z-index: 10;
-      padding: 5px 10px;
-      background: rgba(0,0,0,0.5);
+      padding: 8px 12px;
+      background: rgba(0, 0, 0, 0.6);
       border-radius: 5px;
-      font-size: 14px;
+      font-size: 16px;
+      font-weight: bold;
     }
-    #score-display { top: 10px; left: 10px; }
-    #combo-display { top: 10px; right: 10px; display: none; }
-    #health-bar { bottom: 10px; left: 10px; height: 20px; background: red; }
-    /* We'll update health via inline width */
-    #mini-map { top: 10px; left: 50%; transform: translateX(-50%); }
+    #score-display { top: 15px; left: 15px; }
+    #combo-display { top: 15px; right: 15px; display: none; }
+    #health-bar { bottom: 15px; left: 15px; height: 24px; background: #a00; border: 2px solid #700; }
+    #health-bar > div {
+      height: 100%;
+      width: 100%;
+      background: linear-gradient(90deg, #0f0, #090);
+      transition: width 0.3s ease-out;
+    }
+    #mini-map { top: 15px; left: 50%; transform: translateX(-50%); }
+    /* On-screen Pause Button (for mobile/visual aid) */
+    #pause-button {
+      position: absolute;
+      top: 15px;
+      right: 15px;
+      z-index: 15;
+      background: rgba(0,0,0,0.7);
+      border: 2px solid #fff;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      text-align: center;
+      line-height: 36px;
+      cursor: pointer;
+      user-select: none;
+      font-size: 18px;
+    }
     /* Screens */
     #start-screen,
     #pause-menu,
@@ -55,16 +76,30 @@
       left: 0;
       width: 100%;
       height: 100%;
-      background: rgba(0,0,0,0.8);
+      background: rgba(0,0,0,0.85);
       display: flex;
+      flex-direction: column;
       justify-content: center;
       align-items: center;
-      font-size: 24px;
+      font-size: 28px;
       z-index: 20;
+      text-align: center;
     }
     #start-screen { display: flex; }
     #pause-menu, #game-over-screen { display: none; }
-    /* Player & Enemies */
+    button.ui-btn {
+      padding: 10px 20px;
+      font-size: 18px;
+      border: none;
+      border-radius: 5px;
+      margin: 10px;
+      cursor: pointer;
+      background: linear-gradient(135deg, #008, #00a);
+      color: #fff;
+      transition: background 0.3s ease;
+    }
+    button.ui-btn:hover { background: linear-gradient(135deg, #00a, #008); }
+    /* Player */
     #player {
       position: absolute;
       width: 40px;
@@ -74,13 +109,16 @@
       bottom: 20px;
       left: 50%;
       transform: translateX(-50%);
+      transition: left 0.1s;
     }
+    /* Enemies */
     .enemy {
       position: absolute;
       width: 30px;
       height: 30px;
       background: red;
       border-radius: 50%;
+      transition: top 0.1s, left 0.1s;
     }
     /* Bullets */
     .bullet {
@@ -98,10 +136,10 @@
       border-radius: 50%;
       animation: pulse 1.5s infinite;
     }
-    .powerup.shield { background: blue; }
-    .powerup.rapid { background: magenta; }
-    .powerup.spread { background: lime; }
-    .powerup.homing { background: cyan; }
+    .powerup.shield { background: #00f; }
+    .powerup.rapid { background: #f0f; }
+    .powerup.spread { background: #0f0; }
+    .powerup.homing { background: #0ff; }
     @keyframes pulse {
       0% { transform: scale(1); opacity: 0.8; }
       50% { transform: scale(1.2); opacity: 1; }
@@ -111,7 +149,7 @@
     .damage-number,
     .score-indicator {
       position: absolute;
-      font-size: 16px;
+      font-size: 18px;
       animation: floatUp 1s forwards;
       pointer-events: none;
     }
@@ -119,7 +157,7 @@
       0% { opacity: 1; transform: translateY(0); }
       100% { opacity: 0; transform: translateY(-30px); }
     }
-    /* Critical Health Pulsate */
+    /* Critical Health Effect */
     .pulsate { animation: pulsateBorder 1s infinite; }
     @keyframes pulsateBorder {
       0% { box-shadow: 0 0 10px red; }
@@ -132,15 +170,25 @@
   <div class="game-container">
     <div class="game-area">
       <div id="player"></div>
-      <!-- Enemies, bullets, and power-ups are added dynamically -->
+      <!-- Enemies, bullets, and power-ups are generated dynamically -->
     </div>
     <div id="score-display">Score: 0</div>
     <div id="combo-display"></div>
-    <div id="health-bar" style="width: 100%;"></div>
+    <div id="health-bar"><div></div></div>
     <div id="mini-map"></div>
-    <div id="start-screen">Click to Start</div>
-    <div id="pause-menu">Paused<br>Press Space to Resume</div>
-    <div id="game-over-screen">Game Over<br>Press Space to Restart</div>
+    <div id="pause-button">II</div>
+    <div id="start-screen">
+      <div>Click to Start</div>
+      <button class="ui-btn">Start Game</button>
+    </div>
+    <div id="pause-menu">
+      <div>Paused</div>
+      <div>Press "P" to Resume</div>
+    </div>
+    <div id="game-over-screen">
+      <div>Game Over</div>
+      <div>Press "P" to Restart</div>
+    </div>
   </div>
 
   <script>
@@ -150,37 +198,32 @@
       const gameArea = document.querySelector('.game-area');
       const player = document.getElementById('player');
       const scoreDisplay = document.getElementById('score-display');
-      const healthBar = document.getElementById('health-bar');
+      const healthBar = document.querySelector('#health-bar > div');
       const comboDisplay = document.getElementById('combo-display');
       const miniMap = document.getElementById('mini-map');
       const startScreen = document.getElementById('start-screen');
       const pauseMenu = document.getElementById('pause-menu');
       const gameOverScreen = document.getElementById('game-over-screen');
+      const pauseButton = document.getElementById('pause-button');
 
       // Game Stats
-      let score = 0;
-      let health = 100;
-      let combo = 0;
+      let score = 0, health = 100, combo = 0;
       let comboTimer = null;
-      let isPlaying = false;
-      let isPaused = false;
-      let lastTimestamp = 0;
-      let gameLoopId;
-
+      let isPlaying = false, isPaused = false;
+      let lastTimestamp = 0, gameLoopId;
+      
       // Player Movement
       let playerX = gameArea.offsetWidth / 2 - player.offsetWidth / 2;
       const playerSpeed = 5;
       const keysPressed = {};
-
-      // Arrays for enemies, bullets, and power-ups
-      let enemies = [];
-      let bullets = [];
-      let powerups = [];
-
+      
+      // Game Objects
+      let enemies = [], bullets = [], powerups = [];
+      
       // Konami Code Setup
       const konamiCode = ['ArrowUp','ArrowUp','ArrowDown','ArrowDown','ArrowLeft','ArrowRight','ArrowLeft','ArrowRight','b','a'];
       let konamiIndex = 0;
-
+      
       // --- UI Update Functions ---
       function updateScoreDisplay() {
         scoreDisplay.textContent = `Score: ${score}`;
@@ -201,12 +244,11 @@
         }
       }
       function updateMiniMap() {
-        // Very simple mini-map: show a blue dot for the player and red dots for enemies.
         miniMap.innerHTML = `<span style="color: lightblue;">P</span>`;
         enemies.forEach(() => { miniMap.innerHTML += `<span style="color: red;">E</span>`; });
       }
-
-      // --- Main Game Loop using requestAnimationFrame ---
+      
+      // --- Game Loop using requestAnimationFrame ---
       function gameLoop(timestamp) {
         if (!isPlaying || isPaused) return;
         if (!lastTimestamp) lastTimestamp = timestamp;
@@ -221,32 +263,23 @@
         
         gameLoopId = requestAnimationFrame(gameLoop);
       }
-
+      
       // --- Start Game ---
       function startGame() {
-        score = 0;
-        health = 100;
-        combo = 0;
-        updateScoreDisplay();
-        updateHealthBar();
-        updateComboDisplay();
+        score = 0; health = 100; combo = 0;
+        updateScoreDisplay(); updateHealthBar(); updateComboDisplay();
         playerX = gameArea.offsetWidth / 2 - player.offsetWidth / 2;
         player.style.left = `${playerX}px`;
-        enemies = [];
-        bullets = [];
-        powerups = [];
+        enemies = []; bullets = []; powerups = [];
         startScreen.style.display = 'none';
         gameOverScreen.style.display = 'none';
         pauseMenu.style.display = 'none';
-        isPlaying = true;
-        isPaused = false;
-        lastTimestamp = 0;
+        isPlaying = true; isPaused = false; lastTimestamp = 0;
         spawnEnemy();
-        // For demonstration, also spawn a power-up every 5 sec
         setTimeout(spawnPowerupRandom, 5000);
         gameLoopId = requestAnimationFrame(gameLoop);
       }
-
+      
       // --- Toggle Pause ---
       function togglePause() {
         if (!isPlaying) return;
@@ -260,19 +293,16 @@
           gameLoopId = requestAnimationFrame(gameLoop);
         }
       }
-
+      
       // --- Player Movement ---
       function movePlayer(delta) {
-        if (keysPressed['ArrowLeft'] && playerX > 0) {
-          playerX -= playerSpeed * (delta / 16.67);
-        }
-        if (keysPressed['ArrowRight'] && playerX + player.offsetWidth < gameArea.offsetWidth) {
+        if (keysPressed['ArrowLeft'] && playerX > 0) playerX -= playerSpeed * (delta / 16.67);
+        if (keysPressed['ArrowRight'] && playerX + player.offsetWidth < gameArea.offsetWidth)
           playerX += playerSpeed * (delta / 16.67);
-        }
         playerX = Math.max(0, Math.min(playerX, gameArea.offsetWidth - player.offsetWidth));
         player.style.left = `${playerX}px`;
       }
-
+      
       // --- Shooting ---
       function shoot() {
         if (!isPlaying || isPaused) return;
@@ -283,7 +313,7 @@
         gameArea.appendChild(bullet);
         bullets.push(bullet);
       }
-
+      
       // --- Move Bullets ---
       function moveBullets(delta) {
         for (let i = 0; i < bullets.length; i++) {
@@ -298,7 +328,7 @@
           }
         }
       }
-
+      
       // --- Spawn Enemies ---
       function spawnEnemy() {
         if (!isPlaying || isPaused) return;
@@ -311,7 +341,7 @@
         enemies.push(enemy);
         setTimeout(spawnEnemy, 2000);
       }
-
+      
       // --- Move Enemies ---
       function moveEnemies(delta) {
         for (let i = 0; i < enemies.length; i++) {
@@ -326,7 +356,7 @@
           }
         }
       }
-
+      
       // --- Spawn Power-Ups Randomly ---
       function spawnPowerupRandom() {
         if (!isPlaying || isPaused) return;
@@ -338,7 +368,7 @@
         setTimeout(spawnPowerupRandom, 5000);
       }
       
-      // --- Spawn a Power-Up at (x, y) with falling animation ---
+      // --- Spawn a Power-Up at (x, y) ---
       function spawnPowerUp(x, y) {
         const types = ['shield', 'rapid', 'spread', 'homing'];
         const type = types[Math.floor(Math.random() * types.length)];
@@ -412,7 +442,7 @@
             if (health <= 0) endGame();
           }
         }
-        // Powerup - Player collisions
+        // Power-Up - Player collisions
         for (let i = powerups.length - 1; i >= 0; i--) {
           const powerUp = powerups[i];
           const puRect = powerUp.getBoundingClientRect();
@@ -428,7 +458,7 @@
           }
         }
       }
-
+      
       // --- Floating Indicators ---
       function showDamageNumber(x, y, damage) {
         const dmgNum = document.createElement('div');
@@ -454,13 +484,11 @@
         if (powerUp.classList.contains('shield')) {
           health = Math.min(100, health + 20);
         } else if (powerUp.classList.contains('rapid')) {
-          // Implement rapid fire mode (placeholder: bonus score)
+          // Rapid fire bonus: extra points for 5 seconds
           score += 50;
         } else if (powerUp.classList.contains('spread')) {
-          // Implement spread shot mode (placeholder: bonus score)
           score += 50;
         } else if (powerUp.classList.contains('homing')) {
-          // Implement homing missile effect (placeholder: bonus score)
           score += 50;
         }
         updateScoreDisplay();
@@ -474,31 +502,34 @@
         enemies.forEach(e => e.remove());
         bullets.forEach(b => b.remove());
         powerups.forEach(pu => pu.remove());
-        enemies = [];
-        bullets = [];
-        powerups = [];
+        enemies = []; bullets = []; powerups = [];
       }
-
+      
       // --- Event Listeners ---
       startScreen.addEventListener('click', startGame);
+      pauseButton.addEventListener('click', togglePause);
       document.addEventListener('keydown', (event) => {
+        // Use "P" (or "p") to toggle pause
+        if (event.key.toLowerCase() === 'p') {
+          togglePause();
+          return;
+        }
+        // Start game if not playing and key is Space
         if (!isPlaying && event.code === 'Space') {
           startGame();
           return;
         }
-        if (event.code === 'Space') {
-          togglePause();
-        }
         keysPressed[event.key] = true;
+        // Use Space for shooting
         if (event.key === ' ' && isPlaying && !isPaused) {
           shoot();
         }
-        // Konami Code
+        // Konami Code check
         if (event.key === konamiCode[konamiIndex]) {
           konamiIndex++;
           if (konamiIndex === konamiCode.length) {
             console.log("Easter Egg Activated!");
-            // Trigger additional visual effects or bonus features here.
+            // Trigger special effects here
             konamiIndex = 0;
           }
         } else {
@@ -508,10 +539,9 @@
       document.addEventListener('keyup', (event) => {
         keysPressed[event.key] = false;
       });
-
-      // --- Touch Controls for Mobile ---
-      let touchStartX = 0;
-      let touchCurrentX = 0;
+      
+      // --- Touch Controls ---
+      let touchStartX = 0, touchCurrentX = 0;
       gameArea.addEventListener('touchstart', (event) => {
         touchStartX = event.touches[0].clientX;
       }, { passive: true });
@@ -527,8 +557,8 @@
         touchStartX = touchCurrentX;
       }, { passive: true });
       gameArea.addEventListener('touchend', () => { shoot(); }, { passive: true });
-
-      // Initial Setup: Show Start Screen
+      
+      // Initial Setup
       startScreen.style.display = 'flex';
       updateScoreDisplay();
       updateHealthBar();
