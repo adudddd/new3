@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Enhanced Arcade Shooter</title>
+  <style>
+    /* General Styles */
+    body {
+      margin: 0;
+      background-color: #000;
+      color: #fff;
+      font-family: Arial, sans-serif;
+      overflow: hidden;
+    }
+    .game-container {
+      position: relative;
+      width: 100%;
+      max-width: 800px;
+      margin: 0 auto;
+      background: #111;
+      border: 3px solid #444;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .game-area {
+      position: relative;
+      width: 100%;
+      height: 500px;
+      background: url('stars.jpg') repeat; /* Optional background */
+    }
+    /* UI Elements */
+    #score-display,
+    #combo-display,
+    #health-bar,
+    #mini-map {
+      position: absolute;
+      z-index: 10;
+      padding: 5px 10px;
+      background: rgba(0,0,0,0.5);
+      border-radius: 5px;
+      font-size: 14px;
+    }
+    #score-display { top: 10px; left: 10px; }
+    #combo-display { top: 10px; right: 10px; display: none; }
+    #health-bar { bottom: 10px; left: 10px; height: 20px; background: red; }
+    #health-bar::after {
+      content: '';
+      display: block;
+      height: 100%;
+      width: 100%;
+      background: green;
+    }
+    #mini-map {
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+    }
+    /* Screens */
+    #start-screen,
+    #pause-menu,
+    #game-over-screen {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.8);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-size: 24px;
+      z-index: 20;
+    }
+    #start-screen { display: flex; }
+    #pause-menu, #game-over-screen { display: none; }
+    /* Player & Enemies */
+    #player {
+      position: absolute;
+      width: 40px;
+      height: 40px;
+      background: blue;
+      border-radius: 5px;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+    }
+    .enemy {
+      position: absolute;
+      width: 30px;
+      height: 30px;
+      background: red;
+      border-radius: 50%;
+    }
+    .enemy.shielded { background: orange; }
+    .enemy.kamikaze { background: purple; }
+    /* Bullets */
+    .bullet {
+      position: absolute;
+      width: 6px;
+      height: 12px;
+      background: yellow;
+      border-radius: 2px;
+    }
+    /* Power-Ups */
+    .powerup {
+      position: absolute;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      animation: pulse 1.5s infinite;
+    }
+    .powerup.shield { background: blue; }
+    .powerup.rapid { background: magenta; }
+    .powerup.spread { background: lime; }
+    .powerup.homing { background: cyan; }
+    @keyframes pulse {
+      0% { transform: scale(1); opacity: 0.8; }
+      50% { transform: scale(1.2); opacity: 1; }
+      100% { transform: scale(1); opacity: 0.8; }
+    }
+    /* Floating Indicators */
+    .damage-number,
+    .score-indicator {
+      position: absolute;
+      font-size: 16px;
+      animation: floatUp 1s forwards;
+      pointer-events: none;
+    }
+    @keyframes floatUp {
+      0% { opacity: 1; transform: translateY(0); }
+      100% { opacity: 0; transform: translateY(-30px); }
+    }
+    /* Critical health pulsate */
+    .pulsate { animation: pulsateBorder 1s infinite; }
+    @keyframes pulsateBorder {
+      0% { box-shadow: 0 0 10px red; }
+      50% { box-shadow: 0 0 20px red; }
+      100% { box-shadow: 0 0 10px red; }
+    }
+  </style>
+</head>
+<body>
+  <div class="game-container">
+    <div class="game-area">
+      <div id="player"></div>
+      <!-- Enemies, bullets, and power-ups will be added dynamically -->
+    </div>
+    <div id="score-display">Score: 0</div>
+    <div id="combo-display"></div>
+    <div id="health-bar"></div>
+    <div id="mini-map"></div>
+    <div id="start-screen">Click to Start</div>
+    <div id="pause-menu">Paused<br>Press Space to Resume</div>
+    <div id="game-over-screen">Game Over<br>Press Space to Restart</div>
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+
+      // DOM Elements
+      const gameContainer = document.querySelector('.game-container');
+      const gameArea = document.querySelector('.game-area');
+      const player = document.getElementById('player');
+      const scoreDisplay = document.getElementById('score-display');
+      const healthBar = document.getElementById('health-bar');
+      const comboDisplay = document.getElementById('combo-display');
+      const miniMap = document.getElementById('mini-map');
+      const startScreen = document.getElementById('start-screen');
+      const pauseMenu = document.getElementById('pause-menu');
+      const gameOverScreen = document.getElementById('game-over-screen');
+
+      // Game Stats
+      let score = 0;
+      let health = 100;
+      let combo = 0;
+      let comboTimer = null;
+      let highScore = localStorage.getItem('highScore') || 0;
+      let isPlaying = false;
+      let isPaused = false;
+      let lastFrameTime = 0;
+      let gameLoopId;
+      
+      // Player Movement
+      let playerX = (gameArea.offsetWidth - player.offsetWidth) / 2;
+      const playerSpeed = 5;
+      const keysPressed = {};
+
+      // Enemies, Bullets, Power-Ups, Hazards
+      let enemies = [];
+      let bullets = [];
+      let powerups = [];
+      let hazards = []; // For environmental hazards (asteroids)
+
+      // --- Utility Functions --- //
+      function updateScoreDisplay() {
+        scoreDisplay.textContent = `Score: ${score} (High: ${highScore})`;
+      }
+      function updateHealthBar() {
+        healthBar.style.setProperty('--health', `${health}%`);
+        healthBar.firstChild && (healthBar.firstChild.style.width = `${health}%`);
+        if (health < 30) gameContainer.classList.add('pulsate');
+        else gameContainer.classList.remove('pulsate');
+      }
+      function updateComboDisplay() {
+        if (combo > 1) {
+          comboDisplay.style.display = "block";
+          comboDisplay.textContent = `Combo x${combo}!`;
+          const glow = Math.min(combo * 2, 20);
+          comboDisplay.style.textShadow = `0 0 ${glow}px #ffcc00`;
+        } else {
+          comboDisplay.style.display = "none";
+        }
+      }
+      function updateMiniMap() {
+        // Simple mini-map: show player and enemy positions as dots.
+        miniMap.innerHTML = `<div style="color: lightblue;">P</div>`;
+        enemies.forEach(enemy => {
+          miniMap.innerHTML += `<div style="color: red;">E</div>`;
+        });
+      }
+
+      // --- Game Loop using requestAnimationFrame --- //
+      function gameLoop(timestamp) {
+        if (!isPlaying || isPaused) return;
+        if (!lastFrameTime) lastFrameTime = timestamp;
+        const delta = timestamp - lastFrameTime;
+        lastFrameTime = timestamp;
+
+        movePlayer();
+        moveEnemies(delta);
+        moveBullets(delta);
+        moveHazards(delta);
+        checkCollisions();
+        updateMiniMap();
+
+        gameLoopId = requestAnimationFrame(gameLoop);
+      }
+
+      // --- Start Game ---
+      function startGame() {
+        console.log("Starting Game");
+        // Reset state
+        score = 0; health = 100; combo = 0;
+        updateScoreDisplay();
+        updateHealthBar();
+        updateComboDisplay();
+        playerX = (gameArea.offsetWidth - player.offsetWidth) / 2;
+        player.style.left = `${playerX}px`;
+        enemies = []; bullets = []; powerups = []; hazards = [];
+        startScreen.style.display = 'none';
+        gameOverScreen.style.display = 'none';
+        pauseMenu.style.display = 'none';
+        isPlaying = true;
+        isPaused = false;
+        lastFrameTime = 0;
+        // Start enemy and hazard spawns
+        spawnEnemy();
+        spawnHazard();
+        spawnPowerupRandom();
+        // Start game loop
+        gameLoopId = requestAnimationFrame(gameLoop);
+      }
+
+      function togglePause() {
+        if (!isPlaying) return;
+        isPaused = !isPaused;
+        if (isPaused) {
+          cancelAnimationFrame(gameLoopId);
+          pauseMenu.style.display = "flex";
+        } else {
+          pauseMenu.style.display = "none";
+          lastFrameTime = 0;
+          gameLoopId = requestAnimationFrame(gameLoop);
+        }
+      }
+
+      // --- Player Movement ---
+      function movePlayer() {
+        if (keysPressed['ArrowLeft'] && playerX > 0) playerX -= playerSpeed;
+        if (keysPressed['ArrowRight'] && playerX + player.offsetWidth < gameArea.offsetWidth)
+          playerX += playerSpeed;
+        playerX = Math.max(0, Math.min(playerX, gameArea.offsetWidth - player.offsetWidth));
+        player.style.left = `${playerX}px`;
+      }
+
+      // --- Shooting ---
+      function shoot() {
+        if (!isPlaying || isPaused) return;
+        const bullet = document.createElement('div');
+        bullet.className = 'bullet';
+        // Center the bullet above the player
+        bullet.style.left = `${playerX + player.offsetWidth/2 - 3}px`;
+        bullet.style.bottom = `${player.offsetHeight}px`;
+        gameArea.appendChild(bullet);
+        bullets.push(bullet);
+        // (Optional: play shooting sound)
+      }
+
+      // --- Move Bullets ---
+      function moveBullets(delta) {
+        for (let i = 0; i < bullets.length; i++) {
+          const bullet = bullets[i];
+          let bottom = parseInt(bullet.style.bottom);
+          bottom += 10 * (delta / 16.67);
+          bullet.style.bottom = `${bottom}px`;
+          if (bottom > gameArea.offsetHeight) {
+            bullet.remove();
+            bullets.splice(i, 1);
+            i--;
+          }
+        }
+      }
+
+      // --- Spawn Enemies ---
+      function spawnEnemy() {
+        if (!isPlaying || isPaused) return;
+        const enemy = document.createElement('div');
+        // Randomize enemy type: basic, shielded, or kamikaze
+        const types = ['basic', 'shielded', 'kamikaze'];
+        const type = types[Math.floor(Math.random() * types.length)];
+        enemy.className = `enemy ${type}`;
+        const enemyX = Math.random() * (gameArea.offsetWidth - 30);
+        enemy.style.left = `${enemyX}px`;
+        enemy.style.top = `0px`;
+        gameArea.appendChild(enemy);
+        enemies.push(enemy);
+        // Spawn next enemy after a random interval between 1.5-2.5 sec
+        setTimeout(spawnEnemy, 1500 + Math.random() * 1000);
+      }
+
+      // --- Move Enemies ---
+      function moveEnemies(delta) {
+        for (let i = 0; i < enemies.length; i++) {
+          const enemy = enemies[i];
+          let top = parseInt(enemy.style.top);
+          // Different speeds/behaviors for different enemy types
+          if (enemy.classList.contains('kamikaze')) {
+            // Kamikaze enemies dive faster toward the player
+            top += 3 * (delta / 16.67);
+            // Also move horizontally toward the player
+            const enemyX = parseInt(enemy.style.left);
+            if (playerX + player.offsetWidth/2 < enemyX) {
+              enemy.style.left = `${enemyX - 1}px`;
+            } else {
+              enemy.style.left = `${enemyX + 1}px`;
+            }
+          } else {
+            top += 1.5 * (delta / 16.67);
+          }
+          enemy.style.top = `${top}px`;
+          if (top > gameArea.offsetHeight) {
+            enemy.remove();
+            enemies.splice(i, 1);
+            i--;
+          }
+        }
+      }
+
+      // --- Environmental Hazard: Asteroid ---
+      function spawnHazard() {
+        if (!isPlaying || isPaused) return;
+        const hazard = document.createElement('div');
+        hazard.className = 'enemy asteroid';
+        // Style asteroid via CSS class or inline:
+        hazard.style.width = '25px';
+        hazard.style.height = '25px';
+        hazard.style.background = 'gray';
+        hazard.style.borderRadius = '50%';
+        const hazardX = Math.random() * (gameArea.offsetWidth - 25);
+        hazard.style.left = `${hazardX}px`;
+        hazard.style.top = `0px`;
+        gameArea.appendChild(hazard);
+        hazards.push(hazard);
+        // Next hazard in 3 seconds (adjust as desired)
+        setTimeout(spawnHazard, 3000 + Math.random() * 2000);
+      }
+
+      function moveHazards(delta) {
+        for (let i = 0; i < hazards.length; i++) {
+          const hazard = hazards[i];
+          let top = parseInt(hazard.style.top);
+          top += 2 * (delta / 16.67);
+          hazard.style.top = `${top}px`;
+          if (top > gameArea.offsetHeight) {
+            hazard.remove();
+            hazards.splice(i, 1);
+            i--;
+          }
+        }
+      }
+
+      // --- Power-Up System ---
+      function spawnPowerupRandom() {
+        if (!isPlaying || isPaused) return;
+        // Random chance to spawn a power-up from a random enemy position
+        if (enemies.length > 0 && Math.random() < 0.3) {
+          const enemy = enemies[Math.floor(Math.random() * enemies.length)];
+          const enemyRect = enemy.getBoundingClientRect();
+          spawnPowerUp(enemyRect.x, enemyRect.y);
+        }
+        // Check again in 5 seconds
+        setTimeout(spawnPowerupRandom, 5000);
+      }
+      function spawnPowerUp(x, y) {
+        const types = ['shield', 'rapid', 'spread', 'homing'];
+        const type = types[Math.floor(Math.random() * types.length)];
+        const powerUp = document.createElement('div');
+        powerUp.className = `powerup ${type}`;
+        powerUp.style.left = `${x}px`;
+        powerUp.style.top = `${y}px`;
+        gameContainer.appendChild(powerUp);
+        powerups.push(powerUp);
+        // Falling animation
+        let pos = y;
+        const fall = setInterval(() => {
+          pos += 2;
+          powerUp.style.top = `${pos}px`;
+          if (pos > gameArea.offsetHeight) clearInterval(fall);
+        }, 16);
+      }
+
+      // --- Collision Detection ---
+      function checkCollisions() {
+        // Bullet - Enemy collisions
+        for (let i = bullets.length - 1; i >= 0; i--) {
+          const bullet = bullets[i];
+          const bulletRect = bullet.getBoundingClientRect();
+          for (let j = enemies.length - 1; j >= 0; j--) {
+            const enemy = enemies[j];
+            const enemyRect = enemy.getBoundingClientRect();
+            if (
+              bulletRect.left < enemyRect.right &&
+              bulletRect.right > enemyRect.left &&
+              bulletRect.top < enemyRect.bottom &&
+              bulletRect.bottom > enemyRect.top
+            ) {
+              // Increase score and combo
+              score += 10 * (combo || 1);
+              combo++;
+              updateScoreDisplay();
+              updateComboDisplay();
+              clearTimeout(comboTimer);
+              comboTimer = setTimeout(() => { combo = 0; updateComboDisplay(); }, 2000);
+              // Show score indicator
+              showScoreIndicator(enemyRect.x + enemyRect.width/2, enemyRect.y);
+              // Chance to spawn power-up on enemy death
+              if (Math.random() < 0.4) spawnPowerUp(enemyRect.x, enemyRect.y);
+              // Remove enemy and bullet
+              enemy.remove();
+              enemies.splice(j, 1);
+              bullet.remove();
+              bullets.splice(i, 1);
+              break;
+            }
+          }
+        }
+        // Enemy/Hazard - Player collisions
+        const playerRect = player.getBoundingClientRect();
+        // Enemies
+        for (let i = enemies.length - 1; i >= 0; i--) {
+          const enemy = enemies[i];
+          const enemyRect = enemy.getBoundingClientRect();
+          if (
+            playerRect.left < enemyRect.right &&
+            playerRect.right > enemyRect.left &&
+            playerRect.top < enemyRect.bottom &&
+            playerRect.bottom > enemyRect.top
+          ) {
+            health -= 10;
+            showDamageNumber(playerRect.x + playerRect.width/2, playerRect.y, 10);
+            updateHealthBar();
+            enemy.remove();
+            enemies.splice(i, 1);
+            if (health <= 0) endGame();
+          }
+        }
+        // Hazards (asteroids)
+        for (let i = hazards.length - 1; i >= 0; i--) {
+          const hazard = hazards[i];
+          const hazardRect = hazard.getBoundingClientRect();
+          if (
+            playerRect.left < hazardRect.right &&
+            playerRect.right > hazardRect.left &&
+            playerRect.top < hazardRect.bottom &&
+            playerRect.bottom > hazardRect.top
+          ) {
+            health -= 15;
+            showDamageNumber(playerRect.x + playerRect.width/2, playerRect.y, 15);
+            updateHealthBar();
+            hazard.remove();
+            hazards.splice(i, 1);
+            if (health <= 0) endGame();
+          }
+        }
+      }
+
+      // --- Floating Indicators ---
+      function showDamageNumber(x, y, damage) {
+        const dmgNum = document.createElement('div');
+        dmgNum.className = 'damage-number';
+        dmgNum.textContent = `-${damage}`;
+        dmgNum.style.left = `${x}px`;
+        dmgNum.style.top = `${y}px`;
+        gameArea.appendChild(dmgNum);
+        dmgNum.addEventListener('animationend', () => { dmgNum.remove(); });
+      }
+      function showScoreIndicator(x, y) {
+        const scoreInd = document.createElement('div');
+        scoreInd.className = 'score-indicator';
+        scoreInd.textContent = '+10';
+        scoreInd.style.left = `${x}px`;
+        scoreInd.style.top = `${y}px`;
+        gameArea.appendChild(scoreInd);
+        scoreInd.addEventListener('animationend', () => { scoreInd.remove(); });
+      }
+
+      // --- End Game ---
+      function endGame() {
+        isPlaying = false;
+        cancelAnimationFrame(gameLoopId);
+        gameOverScreen.style.display = "flex";
+        // Save high score
+        if (score > highScore) {
+          highScore = score;
+          localStorage.setItem('highScore', highScore);
+        }
+        // Clean up enemies, bullets, hazards
+        enemies.forEach(e => e.remove());
+        bullets.forEach(b => b.remove());
+        hazards.forEach(h => h.remove());
+        enemies = []; bullets = []; hazards = [];
+      }
+
+      // --- Event Listeners ---
+      startScreen.addEventListener('click', startGame);
+      document.addEventListener('keydown', (event) => {
+        // Start game with Space if not playing
+        if (!isPlaying && event.code === 'Space') {
+          startGame();
+          return;
+        }
+        if (event.code === 'Space') {
+          togglePause();
+        }
+        keysPressed[event.key] = true;
+        // Shoot on Space (only if game is playing and not paused)
+        if (event.key === ' ' && isPlaying && !isPaused) shoot();
+
+        // Konami Code (Easter Egg)
+        const konamiCode = ['ArrowUp','ArrowUp','ArrowDown','ArrowDown','ArrowLeft','ArrowRight','ArrowLeft','ArrowRight','b','a'];
+        if (event.key === konamiCode[konamiIndex]) {
+          konamiIndex++;
+          if (konamiIndex === konamiCode.length) {
+            console.log("Easter Egg Activated!");
+            // Trigger dance mode, funny effects, etc.
+            konamiIndex = 0;
+          }
+        } else {
+          konamiIndex = 0;
+        }
+      });
+      document.addEventListener('keyup', (event) => { keysPressed[event.key] = false; });
+
+      // Touch Controls for Mobile
+      let touchStartX = 0;
+      let touchCurrentX = 0;
+      gameArea.addEventListener('touchstart', (event) => {
+        touchStartX = event.touches[0].clientX;
+      }, { passive: true });
+      gameArea.addEventListener('touchmove', (event) => {
+        if (!isPlaying) return;
+        touchCurrentX = event.touches[0].clientX;
+        const deltaX = touchCurrentX - touchStartX;
+        playerX = Math.max(0, Math.min(playerX + deltaX, gameArea.offsetWidth - player.offsetWidth));
+        player.style.left = `${playerX}px`;
+        touchStartX = touchCurrentX;
+      }, { passive: true });
+      gameArea.addEventListener('touchend', () => { shoot(); }, { passive: true });
+
+      // Konami Code tracker
+      let konamiIndex = 0;
+
+      // --- Initial Setup ---
+      startScreen.style.display = 'flex';
+      updateScoreDisplay();
+      updateHealthBar();
+    });
+  </script>
+</body>
+</html>
