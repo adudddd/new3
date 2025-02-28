@@ -44,18 +44,8 @@
     #score-display { top: 10px; left: 10px; }
     #combo-display { top: 10px; right: 10px; display: none; }
     #health-bar { bottom: 10px; left: 10px; height: 20px; background: red; }
-    #health-bar::after {
-      content: '';
-      display: block;
-      height: 100%;
-      width: 100%;
-      background: green;
-    }
-    #mini-map {
-      top: 10px;
-      left: 50%;
-      transform: translateX(-50%);
-    }
+    /* We'll update health via inline width */
+    #mini-map { top: 10px; left: 50%; transform: translateX(-50%); }
     /* Screens */
     #start-screen,
     #pause-menu,
@@ -92,8 +82,6 @@
       background: red;
       border-radius: 50%;
     }
-    .enemy.shielded { background: orange; }
-    .enemy.kamikaze { background: purple; }
     /* Bullets */
     .bullet {
       position: absolute;
@@ -131,7 +119,7 @@
       0% { opacity: 1; transform: translateY(0); }
       100% { opacity: 0; transform: translateY(-30px); }
     }
-    /* Critical health pulsate */
+    /* Critical Health Pulsate */
     .pulsate { animation: pulsateBorder 1s infinite; }
     @keyframes pulsateBorder {
       0% { box-shadow: 0 0 10px red; }
@@ -144,11 +132,11 @@
   <div class="game-container">
     <div class="game-area">
       <div id="player"></div>
-      <!-- Enemies, bullets, and power-ups will be added dynamically -->
+      <!-- Enemies, bullets, and power-ups are added dynamically -->
     </div>
     <div id="score-display">Score: 0</div>
     <div id="combo-display"></div>
-    <div id="health-bar"></div>
+    <div id="health-bar" style="width: 100%;"></div>
     <div id="mini-map"></div>
     <div id="start-screen">Click to Start</div>
     <div id="pause-menu">Paused<br>Press Space to Resume</div>
@@ -157,7 +145,6 @@
 
   <script>
     document.addEventListener('DOMContentLoaded', () => {
-
       // DOM Elements
       const gameContainer = document.querySelector('.game-container');
       const gameArea = document.querySelector('.game-area');
@@ -175,30 +162,31 @@
       let health = 100;
       let combo = 0;
       let comboTimer = null;
-      let highScore = localStorage.getItem('highScore') || 0;
       let isPlaying = false;
       let isPaused = false;
-      let lastFrameTime = 0;
+      let lastTimestamp = 0;
       let gameLoopId;
-      
+
       // Player Movement
-      let playerX = (gameArea.offsetWidth - player.offsetWidth) / 2;
+      let playerX = gameArea.offsetWidth / 2 - player.offsetWidth / 2;
       const playerSpeed = 5;
       const keysPressed = {};
 
-      // Enemies, Bullets, Power-Ups, Hazards
+      // Arrays for enemies, bullets, and power-ups
       let enemies = [];
       let bullets = [];
       let powerups = [];
-      let hazards = []; // For environmental hazards (asteroids)
 
-      // --- Utility Functions --- //
+      // Konami Code Setup
+      const konamiCode = ['ArrowUp','ArrowUp','ArrowDown','ArrowDown','ArrowLeft','ArrowRight','ArrowLeft','ArrowRight','b','a'];
+      let konamiIndex = 0;
+
+      // --- UI Update Functions ---
       function updateScoreDisplay() {
-        scoreDisplay.textContent = `Score: ${score} (High: ${highScore})`;
+        scoreDisplay.textContent = `Score: ${score}`;
       }
       function updateHealthBar() {
-        healthBar.style.setProperty('--health', `${health}%`);
-        healthBar.firstChild && (healthBar.firstChild.style.width = `${health}%`);
+        healthBar.style.width = `${health}%`;
         if (health < 30) gameContainer.classList.add('pulsate');
         else gameContainer.classList.remove('pulsate');
       }
@@ -206,62 +194,60 @@
         if (combo > 1) {
           comboDisplay.style.display = "block";
           comboDisplay.textContent = `Combo x${combo}!`;
-          const glow = Math.min(combo * 2, 20);
-          comboDisplay.style.textShadow = `0 0 ${glow}px #ffcc00`;
+          const glowIntensity = Math.min(combo * 2, 20);
+          comboDisplay.style.textShadow = `0 0 ${glowIntensity}px #ffcc00`;
         } else {
           comboDisplay.style.display = "none";
         }
       }
       function updateMiniMap() {
-        // Simple mini-map: show player and enemy positions as dots.
-        miniMap.innerHTML = `<div style="color: lightblue;">P</div>`;
-        enemies.forEach(enemy => {
-          miniMap.innerHTML += `<div style="color: red;">E</div>`;
-        });
+        // Very simple mini-map: show a blue dot for the player and red dots for enemies.
+        miniMap.innerHTML = `<span style="color: lightblue;">P</span>`;
+        enemies.forEach(() => { miniMap.innerHTML += `<span style="color: red;">E</span>`; });
       }
 
-      // --- Game Loop using requestAnimationFrame --- //
+      // --- Main Game Loop using requestAnimationFrame ---
       function gameLoop(timestamp) {
         if (!isPlaying || isPaused) return;
-        if (!lastFrameTime) lastFrameTime = timestamp;
-        const delta = timestamp - lastFrameTime;
-        lastFrameTime = timestamp;
-
-        movePlayer();
+        if (!lastTimestamp) lastTimestamp = timestamp;
+        const delta = timestamp - lastTimestamp;
+        lastTimestamp = timestamp;
+        
+        movePlayer(delta);
         moveEnemies(delta);
         moveBullets(delta);
-        moveHazards(delta);
         checkCollisions();
         updateMiniMap();
-
+        
         gameLoopId = requestAnimationFrame(gameLoop);
       }
 
       // --- Start Game ---
       function startGame() {
-        console.log("Starting Game");
-        // Reset state
-        score = 0; health = 100; combo = 0;
+        score = 0;
+        health = 100;
+        combo = 0;
         updateScoreDisplay();
         updateHealthBar();
         updateComboDisplay();
-        playerX = (gameArea.offsetWidth - player.offsetWidth) / 2;
+        playerX = gameArea.offsetWidth / 2 - player.offsetWidth / 2;
         player.style.left = `${playerX}px`;
-        enemies = []; bullets = []; powerups = []; hazards = [];
+        enemies = [];
+        bullets = [];
+        powerups = [];
         startScreen.style.display = 'none';
         gameOverScreen.style.display = 'none';
         pauseMenu.style.display = 'none';
         isPlaying = true;
         isPaused = false;
-        lastFrameTime = 0;
-        // Start enemy and hazard spawns
+        lastTimestamp = 0;
         spawnEnemy();
-        spawnHazard();
-        spawnPowerupRandom();
-        // Start game loop
+        // For demonstration, also spawn a power-up every 5 sec
+        setTimeout(spawnPowerupRandom, 5000);
         gameLoopId = requestAnimationFrame(gameLoop);
       }
 
+      // --- Toggle Pause ---
       function togglePause() {
         if (!isPlaying) return;
         isPaused = !isPaused;
@@ -270,16 +256,19 @@
           pauseMenu.style.display = "flex";
         } else {
           pauseMenu.style.display = "none";
-          lastFrameTime = 0;
+          lastTimestamp = 0;
           gameLoopId = requestAnimationFrame(gameLoop);
         }
       }
 
       // --- Player Movement ---
-      function movePlayer() {
-        if (keysPressed['ArrowLeft'] && playerX > 0) playerX -= playerSpeed;
-        if (keysPressed['ArrowRight'] && playerX + player.offsetWidth < gameArea.offsetWidth)
-          playerX += playerSpeed;
+      function movePlayer(delta) {
+        if (keysPressed['ArrowLeft'] && playerX > 0) {
+          playerX -= playerSpeed * (delta / 16.67);
+        }
+        if (keysPressed['ArrowRight'] && playerX + player.offsetWidth < gameArea.offsetWidth) {
+          playerX += playerSpeed * (delta / 16.67);
+        }
         playerX = Math.max(0, Math.min(playerX, gameArea.offsetWidth - player.offsetWidth));
         player.style.left = `${playerX}px`;
       }
@@ -289,22 +278,20 @@
         if (!isPlaying || isPaused) return;
         const bullet = document.createElement('div');
         bullet.className = 'bullet';
-        // Center the bullet above the player
         bullet.style.left = `${playerX + player.offsetWidth/2 - 3}px`;
         bullet.style.bottom = `${player.offsetHeight}px`;
         gameArea.appendChild(bullet);
         bullets.push(bullet);
-        // (Optional: play shooting sound)
       }
 
       // --- Move Bullets ---
       function moveBullets(delta) {
         for (let i = 0; i < bullets.length; i++) {
           const bullet = bullets[i];
-          let bottom = parseInt(bullet.style.bottom);
-          bottom += 10 * (delta / 16.67);
-          bullet.style.bottom = `${bottom}px`;
-          if (bottom > gameArea.offsetHeight) {
+          let bulletBottom = parseInt(bullet.style.bottom);
+          bulletBottom += 10 * (delta / 16.67);
+          bullet.style.bottom = `${bulletBottom}px`;
+          if (bulletBottom > gameArea.offsetHeight) {
             bullet.remove();
             bullets.splice(i, 1);
             i--;
@@ -316,40 +303,23 @@
       function spawnEnemy() {
         if (!isPlaying || isPaused) return;
         const enemy = document.createElement('div');
-        // Randomize enemy type: basic, shielded, or kamikaze
-        const types = ['basic', 'shielded', 'kamikaze'];
-        const type = types[Math.floor(Math.random() * types.length)];
-        enemy.className = `enemy ${type}`;
+        enemy.className = 'enemy basic';
         const enemyX = Math.random() * (gameArea.offsetWidth - 30);
         enemy.style.left = `${enemyX}px`;
-        enemy.style.top = `0px`;
+        enemy.style.top = '0px';
         gameArea.appendChild(enemy);
         enemies.push(enemy);
-        // Spawn next enemy after a random interval between 1.5-2.5 sec
-        setTimeout(spawnEnemy, 1500 + Math.random() * 1000);
+        setTimeout(spawnEnemy, 2000);
       }
 
       // --- Move Enemies ---
       function moveEnemies(delta) {
         for (let i = 0; i < enemies.length; i++) {
           const enemy = enemies[i];
-          let top = parseInt(enemy.style.top);
-          // Different speeds/behaviors for different enemy types
-          if (enemy.classList.contains('kamikaze')) {
-            // Kamikaze enemies dive faster toward the player
-            top += 3 * (delta / 16.67);
-            // Also move horizontally toward the player
-            const enemyX = parseInt(enemy.style.left);
-            if (playerX + player.offsetWidth/2 < enemyX) {
-              enemy.style.left = `${enemyX - 1}px`;
-            } else {
-              enemy.style.left = `${enemyX + 1}px`;
-            }
-          } else {
-            top += 1.5 * (delta / 16.67);
-          }
-          enemy.style.top = `${top}px`;
-          if (top > gameArea.offsetHeight) {
+          let enemyTop = parseInt(enemy.style.top);
+          enemyTop += 1 * (delta / 16.67);
+          enemy.style.top = `${enemyTop}px`;
+          if (enemyTop > gameArea.offsetHeight) {
             enemy.remove();
             enemies.splice(i, 1);
             i--;
@@ -357,51 +327,18 @@
         }
       }
 
-      // --- Environmental Hazard: Asteroid ---
-      function spawnHazard() {
-        if (!isPlaying || isPaused) return;
-        const hazard = document.createElement('div');
-        hazard.className = 'enemy asteroid';
-        // Style asteroid via CSS class or inline:
-        hazard.style.width = '25px';
-        hazard.style.height = '25px';
-        hazard.style.background = 'gray';
-        hazard.style.borderRadius = '50%';
-        const hazardX = Math.random() * (gameArea.offsetWidth - 25);
-        hazard.style.left = `${hazardX}px`;
-        hazard.style.top = `0px`;
-        gameArea.appendChild(hazard);
-        hazards.push(hazard);
-        // Next hazard in 3 seconds (adjust as desired)
-        setTimeout(spawnHazard, 3000 + Math.random() * 2000);
-      }
-
-      function moveHazards(delta) {
-        for (let i = 0; i < hazards.length; i++) {
-          const hazard = hazards[i];
-          let top = parseInt(hazard.style.top);
-          top += 2 * (delta / 16.67);
-          hazard.style.top = `${top}px`;
-          if (top > gameArea.offsetHeight) {
-            hazard.remove();
-            hazards.splice(i, 1);
-            i--;
-          }
-        }
-      }
-
-      // --- Power-Up System ---
+      // --- Spawn Power-Ups Randomly ---
       function spawnPowerupRandom() {
         if (!isPlaying || isPaused) return;
-        // Random chance to spawn a power-up from a random enemy position
         if (enemies.length > 0 && Math.random() < 0.3) {
           const enemy = enemies[Math.floor(Math.random() * enemies.length)];
           const enemyRect = enemy.getBoundingClientRect();
           spawnPowerUp(enemyRect.x, enemyRect.y);
         }
-        // Check again in 5 seconds
         setTimeout(spawnPowerupRandom, 5000);
       }
+      
+      // --- Spawn a Power-Up at (x, y) with falling animation ---
       function spawnPowerUp(x, y) {
         const types = ['shield', 'rapid', 'spread', 'homing'];
         const type = types[Math.floor(Math.random() * types.length)];
@@ -411,16 +348,22 @@
         powerUp.style.top = `${y}px`;
         gameContainer.appendChild(powerUp);
         powerups.push(powerUp);
-        // Falling animation
         let pos = y;
         const fall = setInterval(() => {
           pos += 2;
           powerUp.style.top = `${pos}px`;
-          if (pos > gameArea.offsetHeight) clearInterval(fall);
+          if (pos > gameArea.offsetHeight) {
+            clearInterval(fall);
+            if (powerUp.parentNode) {
+              powerUp.remove();
+              const index = powerups.indexOf(powerUp);
+              if (index > -1) powerups.splice(index, 1);
+            }
+          }
         }, 16);
       }
-
-      // --- Collision Detection ---
+      
+      // --- Check Collisions ---
       function checkCollisions() {
         // Bullet - Enemy collisions
         for (let i = bullets.length - 1; i >= 0; i--) {
@@ -435,29 +378,23 @@
               bulletRect.top < enemyRect.bottom &&
               bulletRect.bottom > enemyRect.top
             ) {
-              // Increase score and combo
-              score += 10 * (combo || 1);
+              showScoreIndicator(enemyRect.x + enemyRect.width/2, enemyRect.y);
+              score += 10;
               combo++;
               updateScoreDisplay();
               updateComboDisplay();
               clearTimeout(comboTimer);
               comboTimer = setTimeout(() => { combo = 0; updateComboDisplay(); }, 2000);
-              // Show score indicator
-              showScoreIndicator(enemyRect.x + enemyRect.width/2, enemyRect.y);
-              // Chance to spawn power-up on enemy death
-              if (Math.random() < 0.4) spawnPowerUp(enemyRect.x, enemyRect.y);
-              // Remove enemy and bullet
-              enemy.remove();
-              enemies.splice(j, 1);
               bullet.remove();
               bullets.splice(i, 1);
+              enemy.remove();
+              enemies.splice(j, 1);
               break;
             }
           }
         }
-        // Enemy/Hazard - Player collisions
+        // Enemy - Player collisions
         const playerRect = player.getBoundingClientRect();
-        // Enemies
         for (let i = enemies.length - 1; i >= 0; i--) {
           const enemy = enemies[i];
           const enemyRect = enemy.getBoundingClientRect();
@@ -475,22 +412,19 @@
             if (health <= 0) endGame();
           }
         }
-        // Hazards (asteroids)
-        for (let i = hazards.length - 1; i >= 0; i--) {
-          const hazard = hazards[i];
-          const hazardRect = hazard.getBoundingClientRect();
+        // Powerup - Player collisions
+        for (let i = powerups.length - 1; i >= 0; i--) {
+          const powerUp = powerups[i];
+          const puRect = powerUp.getBoundingClientRect();
           if (
-            playerRect.left < hazardRect.right &&
-            playerRect.right > hazardRect.left &&
-            playerRect.top < hazardRect.bottom &&
-            playerRect.bottom > hazardRect.top
+            playerRect.left < puRect.right &&
+            playerRect.right > puRect.left &&
+            playerRect.top < puRect.bottom &&
+            playerRect.bottom > puRect.top
           ) {
-            health -= 15;
-            showDamageNumber(playerRect.x + playerRect.width/2, playerRect.y, 15);
-            updateHealthBar();
-            hazard.remove();
-            hazards.splice(i, 1);
-            if (health <= 0) endGame();
+            collectPowerUp(powerUp);
+            powerUp.remove();
+            powerups.splice(i, 1);
           }
         }
       }
@@ -514,28 +448,40 @@
         gameArea.appendChild(scoreInd);
         scoreInd.addEventListener('animationend', () => { scoreInd.remove(); });
       }
-
+      
+      // --- Power-Up Collection Effects ---
+      function collectPowerUp(powerUp) {
+        if (powerUp.classList.contains('shield')) {
+          health = Math.min(100, health + 20);
+        } else if (powerUp.classList.contains('rapid')) {
+          // Implement rapid fire mode (placeholder: bonus score)
+          score += 50;
+        } else if (powerUp.classList.contains('spread')) {
+          // Implement spread shot mode (placeholder: bonus score)
+          score += 50;
+        } else if (powerUp.classList.contains('homing')) {
+          // Implement homing missile effect (placeholder: bonus score)
+          score += 50;
+        }
+        updateScoreDisplay();
+      }
+      
       // --- End Game ---
       function endGame() {
         isPlaying = false;
         cancelAnimationFrame(gameLoopId);
         gameOverScreen.style.display = "flex";
-        // Save high score
-        if (score > highScore) {
-          highScore = score;
-          localStorage.setItem('highScore', highScore);
-        }
-        // Clean up enemies, bullets, hazards
         enemies.forEach(e => e.remove());
         bullets.forEach(b => b.remove());
-        hazards.forEach(h => h.remove());
-        enemies = []; bullets = []; hazards = [];
+        powerups.forEach(pu => pu.remove());
+        enemies = [];
+        bullets = [];
+        powerups = [];
       }
 
       // --- Event Listeners ---
       startScreen.addEventListener('click', startGame);
       document.addEventListener('keydown', (event) => {
-        // Start game with Space if not playing
         if (!isPlaying && event.code === 'Space') {
           startGame();
           return;
@@ -544,25 +490,26 @@
           togglePause();
         }
         keysPressed[event.key] = true;
-        // Shoot on Space (only if game is playing and not paused)
-        if (event.key === ' ' && isPlaying && !isPaused) shoot();
-
-        // Konami Code (Easter Egg)
-        const konamiCode = ['ArrowUp','ArrowUp','ArrowDown','ArrowDown','ArrowLeft','ArrowRight','ArrowLeft','ArrowRight','b','a'];
+        if (event.key === ' ' && isPlaying && !isPaused) {
+          shoot();
+        }
+        // Konami Code
         if (event.key === konamiCode[konamiIndex]) {
           konamiIndex++;
           if (konamiIndex === konamiCode.length) {
             console.log("Easter Egg Activated!");
-            // Trigger dance mode, funny effects, etc.
+            // Trigger additional visual effects or bonus features here.
             konamiIndex = 0;
           }
         } else {
           konamiIndex = 0;
         }
       });
-      document.addEventListener('keyup', (event) => { keysPressed[event.key] = false; });
+      document.addEventListener('keyup', (event) => {
+        keysPressed[event.key] = false;
+      });
 
-      // Touch Controls for Mobile
+      // --- Touch Controls for Mobile ---
       let touchStartX = 0;
       let touchCurrentX = 0;
       gameArea.addEventListener('touchstart', (event) => {
@@ -571,17 +518,17 @@
       gameArea.addEventListener('touchmove', (event) => {
         if (!isPlaying) return;
         touchCurrentX = event.touches[0].clientX;
-        const deltaX = touchCurrentX - touchStartX;
-        playerX = Math.max(0, Math.min(playerX + deltaX, gameArea.offsetWidth - player.offsetWidth));
-        player.style.left = `${playerX}px`;
+        let deltaX = touchCurrentX - touchStartX;
+        let newPlayerX = playerX + deltaX;
+        const maxPlayerX = gameArea.offsetWidth - player.offsetWidth;
+        newPlayerX = Math.max(0, Math.min(newPlayerX, maxPlayerX));
+        player.style.left = `${newPlayerX}px`;
+        playerX = newPlayerX;
         touchStartX = touchCurrentX;
       }, { passive: true });
       gameArea.addEventListener('touchend', () => { shoot(); }, { passive: true });
 
-      // Konami Code tracker
-      let konamiIndex = 0;
-
-      // --- Initial Setup ---
+      // Initial Setup: Show Start Screen
       startScreen.style.display = 'flex';
       updateScoreDisplay();
       updateHealthBar();
